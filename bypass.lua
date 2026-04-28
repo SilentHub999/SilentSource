@@ -1,10 +1,10 @@
 --[[
-    SILENT HUB V2 - LIGHT THEME SIDEBAR GUI
-    Tanpa Key System, Langsung tampil.
-    Dilengkapi Bypass Anti-Cheat.
+    XYLUS X SILENT - ALL IN ONE
+    Bypass Anti-Cheat (Silent) + Fitur Lengkap Xylus
+    GUI: Linoria Library
 ]]
 
--- ====================== BYPASS ANTI-CHEAT =======================
+-- ==================== BYPASS ANTI-CHEAT (SILENT) ====================
 local Bypass = {
     Hooks = {},
     Stealth = {},
@@ -112,610 +112,506 @@ spawn(function()
     Bypass.Hooks.Trampoline(game:GetService("ReplicatedStorage"), function(...) return nil end)
 end)
 
--- ====================== SERVICES =======================
+-- ==================== LOAD LINORIA LIBRARY ====================
+if not L then
+    local libUrl = "https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua"
+    local libContent = game:HttpGet(libUrl)
+    L = loadstring(libContent)()
+end
+
+-- ==================== SERVICES ====================
 local Players = game:GetService("Players")
-local Player = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
-local Camera = Workspace.CurrentCamera
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local VIM = game:GetService("VirtualInputManager")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- ====================== FITUR STATE =======================
-local Features = {
-    NoClip = false,
-    Wallbang = false,
-    FlyVehicle = false,
-    Aimbot = false,
-    ESP = true,
-    SpeedValue = 16,
-    PlayerName = "",
-    PlayerUsername = "",
-    TierColor = "Default",
-    ESPObjects = {}
-}
+-- ==================== GUI WINDOW ====================
+local Window = L:CreateWindow({
+    Title = "XYLUS | All in One",
+    Center = true,
+    AutoShow = true,
+    TabWidth = 120,
+})
 
--- ====================== FUNGSI UTILITY =======================
-local function FindClosestPlayer()
-    local closest, distance = nil, math.huge
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= Player and plr.Character and plr.Character:FindFirstChild("Head") then
-            local headPos = plr.Character.Head.Position
-            local camPos = Camera.CFrame.Position
-            local dist = (headPos - camPos).Magnitude
-            if dist < distance then
-                distance = dist
-                closest = plr
+local CombatTab = Window:AddTab("Combat")
+local PlayerTab = Window:AddTab("Player")
+local TeleportTab = Window:AddTab("Teleport")
+local VTeleportTab = Window:AddTab("VTeleport")
+local VisualsTab = Window:AddTab("Visuals")
+local SettingsTab = Window:AddTab("Settings")
+
+-- ==================== SILENT AIM (CASTBLACKLIST HOOK) ====================
+local SilentAim = false
+local SilentAimPart = "HumanoidRootPart"
+local SilentAimWallbang = false
+local MaxWallbangDistance = 500
+
+local FovCircle = Drawing.new("Circle")
+FovCircle.Radius = 150
+FovCircle.NumSides = 64
+FovCircle.Thickness = 1.5
+FovCircle.Visible = false
+FovCircle.Color = Color3.fromRGB(0, 255, 0)
+FovCircle.Transparency = 0.6
+FovCircle.Filled = false
+
+RunService.RenderStepped:Connect(function()
+    FovCircle.Position = UserInputService:GetMouseLocation()
+    FovCircle.Visible = SilentAim
+end)
+
+local function SearchGc(FunctionName)
+    local gc = getgc(true)
+    for _, v in pairs(gc) do
+        if type(v) == "function" then
+            local info = debug.getinfo(v)
+            if info and info.name == FunctionName then
+                return v
             end
         end
     end
-    return closest
+    return nil
 end
 
--- ====================== ESP (Drawing) =======================
-local function UpdateESP()
-    if not Features.ESP then
-        for _, obj in pairs(Features.ESPObjects) do
-            pcall(function() obj:Remove() end)
+local function GetFovTarget(Circle, HitPart)
+    local Target = nil
+    local LowestDistance = math.huge
+    for _, v in ipairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer then
+            local Char = v.Character
+            if Char then
+                local Part = Char:FindFirstChild(HitPart)
+                local Humanoid = Char:FindFirstChild("Humanoid")
+                if Part and Humanoid and Humanoid.Health > 0 then
+                    local ScreenPos, OnScreen = Camera:WorldToViewportPoint(Part.Position)
+                    if OnScreen then
+                        local Distance = (Circle.Position - Vector2.new(ScreenPos.X, ScreenPos.Y)).Magnitude
+                        if Distance < Circle.Radius and Distance < LowestDistance then
+                            Target = v
+                            LowestDistance = Distance
+                        end
+                    end
+                end
+            end
         end
-        Features.ESPObjects = {}
+    end
+    return Target
+end
+
+local CastBlacklist = SearchGc("CastBlacklist")
+local CastWhitelist = SearchGc("CastWhitelist")
+
+if CastBlacklist and CastWhitelist then
+    local OldCastBlacklist = hookfunction(CastBlacklist, function(...)
+        local Target = GetFovTarget(FovCircle, SilentAimPart)
+        if Target and SilentAim then
+            local args = {...}
+            local part = Target.Character and Target.Character:FindFirstChild(SilentAimPart)
+            if part then
+                args[2] = part.Position - args[1]
+                if SilentAimWallbang then
+                    if args[2].Magnitude <= MaxWallbangDistance then
+                        args[3] = {Target.Character}
+                        return CastWhitelist(unpack(args))
+                    end
+                end
+                return OldCastBlacklist(unpack(args))
+            end
+        end
+        return OldCastBlacklist(...)
+    end)
+end
+
+local groupSA = CombatTab:AddLeftGroupbox("Silent Aim")
+groupSA:AddToggle("SilentToggle", {Text = "Silent Aim", Default = false, Callback = function(v) SilentAim = v end})
+groupSA:AddDropdown("PartDropdown", {Text = "Target Part", Values = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}, Default = 2, Callback = function(v) SilentAimPart = v end})
+groupSA:AddSlider("FovSlider", {Text = "FOV Radius", Min = 10, Max = 500, Default = 150, Rounding = 0, Callback = function(v) FovCircle.Radius = v end})
+groupSA:AddToggle("WallbangToggle", {Text = "Wallbang", Default = false, Callback = function(v) SilentAimWallbang = v end})
+groupSA:AddSlider("WallbangDist", {Text = "Wallbang Distance", Min = 10, Max = 5000, Default = 500, Rounding = 0, Callback = function(v) MaxWallbangDistance = v end})
+
+-- ==================== INFINITE STAMINA ====================
+local StaminaGroup = PlayerTab:AddLeftGroupbox("Stamina")
+local staminaHooked = false
+local heartbeatConnection = nil
+
+StaminaGroup:AddToggle("InfStaminaToggle", {
+    Text = "Infinite Stamina",
+    Default = false,
+    Callback = function(Value)
+        if Value and not staminaHooked then
+            for _, v in pairs(getgc(true)) do
+                if type(v) == "table" then
+                    for k, _ in pairs(v) do
+                        if k == "Stamina" then
+                            local mt = getmetatable(v)
+                            if mt then
+                                setreadonly(mt, false)
+                                local oldIndex = mt.__index
+                                mt.__index = function(t, k2)
+                                    if k2 == "Stamina" then return 100 end
+                                    return oldIndex and oldIndex(t, k2)
+                                end
+                                staminaHooked = true
+                            end
+                            heartbeatConnection = RunService.Heartbeat:Connect(function()
+                                if Value then v.Stamina = 100 end
+                            end)
+                            break
+                        end
+                    end
+                end
+                if staminaHooked then break end
+            end
+            L:Notify("✅ Infinite Stamina ON", 3)
+        elseif not Value and heartbeatConnection then
+            heartbeatConnection:Disconnect()
+            heartbeatConnection = nil
+            L:Notify("❌ Infinite Stamina OFF", 3)
+        end
+    end
+})
+
+-- ==================== TELEPORT (RESPAWN METHOD) ====================
+local TeleportGroup = TeleportTab:AddLeftGroupbox("Teleport (Respawn)")
+
+local tpLocs = {
+    {"Dealership", 753.20, 4.63, 437.04},
+    {"Jual/Beli Marshmellow", 510.996, 3.587, 598.393},
+    {"Casino", 1154.86, 4.29, -46.85},
+    {"GS Ujung", -465.51, 4.79, 360.47},
+    {"GS Mid", 218.57, 4.65, -173.54},
+    {"Apart 1 (Kompor)", 1141.80, 11.04, 450.35},
+    {"Apart 2 (Kompor)", 1142.49, 11.04, 421.64},
+    {"Apart 3 (Kompor)", 984.09, 11.03, 248.81},
+    {"Apart 4 (Kompor)", 984.09, 11.06, 220.29},
+    {"Bank", -43.01, 4.66, -353.96},
+    {"Doa Turf", -331.58, 18.79, -462.96},
+    {"YGZ Turf", 8.30, 17.82, 288.99},
+    {"OGZ Turf", 113.04, 20.32, -509.80},
+    {"GS Binary", -280.05, 4.68, 257.84},
+    {"Jual Senjata", 80.45, 4.72, 37.38},
+}
+
+local tpDestination = nil
+local isRespawning = false
+local tpStatusLabel = TeleportGroup:AddLabel("Status: STANDBY")
+
+local function onCharacterAdded(char)
+    if not tpDestination then return end
+    task.spawn(function()
+        local hrp = char:WaitForChild("HumanoidRootPart", 10)
+        local hum = char:WaitForChild("Humanoid", 10)
+        if hrp and hum then
+            repeat task.wait(0.1) until hum.Health > 0 and hum.Health == hum.MaxHealth
+            task.wait(0.5)
+            pcall(function() hrp.CFrame = CFrame.new(tpDestination.x, tpDestination.y + 3, tpDestination.z) end)
+            tpStatusLabel:SetText("Status: ARRIVED")
+            task.wait(2)
+            tpStatusLabel:SetText("Status: STANDBY")
+        end
+        tpDestination = nil
+        isRespawning = false
+    end)
+end
+
+if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+local function tpTo(x, y, z)
+    if isRespawning then L:Notify("Tunggu teleport selesai", 2) return end
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    tpDestination = {x = x, y = y, z = z}
+    isRespawning = true
+    tpStatusLabel:SetText("Status: KILL-RESPAWN-TP")
+    if hum and hum.Health > 0 then hum.Health = 0 end
+end
+
+for _, loc in ipairs(tpLocs) do
+    TeleportGroup:AddButton({Text = loc[1], Func = function() tpTo(loc[2], loc[3], loc[4]) end})
+end
+
+-- ==================== VEHICLE TELEPORT ====================
+local VTeleportGroup = VTeleportTab:AddLeftGroupbox("Vehicle Teleport")
+
+local cachedSeat = nil
+local vehStatusLabel = VTeleportGroup:AddLabel("Kendaraan: Tidak ditemukan")
+
+local function updateSeatCache()
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    cachedSeat = hum and hum.SeatPart or nil
+    if cachedSeat then
+        local vehModel = cachedSeat:FindFirstAncestorWhichIsA("Model")
+        vehStatusLabel:SetText("Kendaraan: " .. (vehModel and vehModel.Name or cachedSeat.Name))
+    else
+        vehStatusLabel:SetText("Kendaraan: Tidak ditemukan")
+    end
+end
+
+local function hookCharacter(char)
+    local hum = char:WaitForChild("Humanoid", 10)
+    if hum then
+        hum:GetPropertyChangedSignal("SeatPart"):Connect(updateSeatCache)
+        updateSeatCache()
+    end
+end
+
+if LocalPlayer.Character then hookCharacter(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(hookCharacter)
+
+local function tpVehicle(x, y, z)
+    if not cachedSeat then L:Notify("Tidak di kendaraan", 2) return end
+    local vehModel = cachedSeat:FindFirstAncestorWhichIsA("Model")
+    if vehModel and vehModel.PrimaryPart then
+        vehModel:SetPrimaryPartCFrame(CFrame.new(x, y + 2, z))
+    elseif cachedSeat then
+        cachedSeat.CFrame = CFrame.new(x, y + 2, z)
+    end
+    L:Notify("Teleport kendaraan", 2)
+end
+
+local vtpLocs = {
+    {"Dealership", 753.20, 4.63, 437.04},
+    {"Jual/Beli Marshmellow", 510.996, 3.587, 598.393},
+    {"Casino", 1154.86, 4.29, -46.85},
+    {"GS Ujung", -465.51, 4.79, 360.47},
+    {"GS Mid", 218.57, 4.65, -173.54},
+    {"Apart 1", 1108.93, 11.03, 455.77},
+    {"Apart 2", 1109.15, 11.04, 427.29},
+    {"Apart 3", 1017.93, 11.01, 243.27},
+    {"Apart 4", 1018.19, 11.03, 214.68},
+    {"Bank", -43.01, 4.66, -353.96},
+    {"Pabrik Kentang", -493.88, 4.67, -437.11},
+    {"Box", -492.35, 4.29, -38.15},
+    {"Safe", 120.85, 4.30, -587.63},
+}
+
+for _, loc in ipairs(vtpLocs) do
+    VTeleportGroup:AddButton({Text = loc[1], Func = function() tpVehicle(loc[2], loc[3], loc[4]) end})
+end
+
+-- ==================== VEHICLE FLY ====================
+local VFlyGroup = VisualsTab:AddLeftGroupbox("Vehicle Fly")
+
+local vFlyEnabled = false
+local vFlySpeed = 60
+local vFlyUp = false
+local vFlyDown = false
+local vFlyConn = nil
+local vFlyStatusLabel = VFlyGroup:AddLabel("Status: Tidak di kendaraan")
+
+VFlyGroup:AddToggle("VehicleFlyToggle", {
+    Text = "Vehicle Fly",
+    Default = false,
+    Callback = function(v)
+        vFlyEnabled = v
+        if vFlyEnabled then
+            if vFlyConn then vFlyConn:Disconnect() end
+            vFlyConn = RunService.RenderStepped:Connect(function(dt)
+                local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                local seat = hum and hum.SeatPart
+                if not seat then
+                    vFlyStatusLabel:SetText("Status: Tidak di kendaraan")
+                    return
+                end
+                vFlyStatusLabel:SetText("Status: Terbang aktif")
+                local model = seat:FindFirstAncestorOfClass("Model") or seat
+                local root = model.PrimaryPart or seat
+                local camCF = Camera.CFrame
+                local fwd = Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z).Unit
+                local rgt = Vector3.new(camCF.RightVector.X, 0, camCF.RightVector.Z).Unit
+                local mv = Vector3.zero
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then mv = mv + fwd end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then mv = mv - fwd end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then mv = mv - rgt end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then mv = mv + rgt end
+                if vFlyUp then mv = mv + Vector3.new(0, 1, 0) end
+                if vFlyDown then mv = mv - Vector3.new(0, 1, 0) end
+                pcall(function()
+                    for _, p in pairs(model:GetDescendants()) do
+                        if p:IsA("BasePart") then
+                            p.AssemblyLinearVelocity = Vector3.zero
+                            p.AssemblyAngularVelocity = Vector3.zero
+                        end
+                    end
+                end)
+                if mv.Magnitude > 0 then
+                    local np = root.Position + mv.Unit * vFlySpeed * dt
+                    pcall(function() model:PivotTo(CFrame.new(np, np + fwd)) end)
+                end
+            end)
+        else
+            if vFlyConn then vFlyConn:Disconnect(); vFlyConn = nil end
+            vFlyUp = false; vFlyDown = false
+            vFlyStatusLabel:SetText("Status: Tidak di kendaraan")
+        end
+    end
+})
+
+VFlyGroup:AddSlider("FlySpeedSlider", {Text = "Fly Speed", Min = 10, Max = 300, Default = 60, Rounding = 0, Callback = function(v) vFlySpeed = v end})
+VFlyGroup:AddLabel("E = Naik | Q = Turun | WASD = Steer")
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if not vFlyEnabled or gpe then return end
+    if input.KeyCode == Enum.KeyCode.E then vFlyUp = true end
+    if input.KeyCode == Enum.KeyCode.Q then vFlyDown = true end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.E then vFlyUp = false end
+    if input.KeyCode == Enum.KeyCode.Q then vFlyDown = false end
+end)
+
+-- ==================== PLAYER ESP ====================
+local ESPGroup = VisualsTab:AddRightGroupbox("Player ESP")
+
+local espEnabled = false
+local espMaxDist = 100
+local espCache = {}
+local espBoxColor = Color3.fromRGB(0, 255, 136)
+local espNameColor = Color3.fromRGB(255, 255, 255)
+local boxPadding = 4
+local ESP_INTERVAL = 0.05
+local espAccum = 0
+
+local function createESP(player)
+    if espCache[player] then
+        for _, o in pairs(espCache[player]) do pcall(function() o:Remove() end) end
+    end
+    local box = Drawing.new("Square")
+    box.Thickness = 1
+    box.Color = espBoxColor
+    box.Filled = false
+    local nameL = Drawing.new("Text")
+    nameL.Text = player.Name
+    nameL.Size = 10
+    nameL.Font = 1
+    nameL.Color = espNameColor
+    nameL.Outline = true
+    nameL.Center = true
+    local hpBg = Drawing.new("Square")
+    hpBg.Thickness = 1
+    hpBg.Color = Color3.fromRGB(30, 30, 30)
+    hpBg.Filled = true
+    local hpFl = Drawing.new("Square")
+    hpFl.Thickness = 1
+    hpFl.Color = Color3.fromRGB(0, 255, 80)
+    hpFl.Filled = true
+    local dL = Drawing.new("Text")
+    dL.Size = 10
+    dL.Font = 1
+    dL.Color = Color3.fromRGB(180, 220, 255)
+    dL.Outline = true
+    dL.Center = true
+    espCache[player] = {box, nameL, hpBg, hpFl, dL}
+end
+
+local function removeESP(player)
+    if espCache[player] then
+        for _, o in pairs(espCache[player]) do pcall(function() o:Remove() end) end
+        espCache[player] = nil
+    end
+end
+
+for _, plr in pairs(Players:GetPlayers()) do if plr ~= LocalPlayer then createESP(plr) end end
+Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer then createESP(p) end end)
+Players.PlayerRemoving:Connect(removeESP)
+
+ESPGroup:AddToggle("PlayerESP", {Text = "Player ESP", Default = false, Callback = function(v) espEnabled = v end})
+ESPGroup:AddSlider("ESPMaxDist", {Text = "Max Distance", Min = 10, Max = 500, Default = 100, Rounding = 0, Callback = function(v) espMaxDist = v end})
+ESPGroup:AddLabel("Box | Name | HP Bar | Distance")
+
+RunService.Heartbeat:Connect(function(dt)
+    if not espEnabled then
+        for _, drawings in pairs(espCache) do for _, o in pairs(drawings) do pcall(function() o.Visible = false end) end end
         return
     end
-    -- Hapus drawing lama
-    for _, obj in pairs(Features.ESPObjects) do
-        pcall(function() obj:Remove() end)
-    end
-    Features.ESPObjects = {}
+    espAccum = espAccum + dt
+    if espAccum < ESP_INTERVAL then return end
+    espAccum = 0
+    local myChar = LocalPlayer.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local myPos = myHRP and myHRP.Position
+    local viewportX, viewportY = Camera.ViewportSize.X, Camera.ViewportSize.Y
 
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= Player then
-            local char = plr.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                local head = char:FindFirstChild("Head")
-                if head then
-                    local pos, onScreen = Camera:WorldToViewportPoint(head.Position)
-                    if onScreen then
-                        -- Nama
-                        local nameText = Drawing.new("Text")
-                        nameText.Text = plr.Name
-                        nameText.Position = Vector2.new(pos.X - 30, pos.Y - 35)
-                        nameText.Color = Color3.fromRGB(255,255,255)
-                        nameText.Size = 16
-                        nameText.Outline = true
-                        nameText.Visible = true
-                        table.insert(Features.ESPObjects, nameText)
-
-                        -- Health bar (simulasi, karena tidak ada health, kita isi 100)
-                        local healthBar = Drawing.new("Square")
-                        healthBar.Position = Vector2.new(pos.X - 35, pos.Y + 10)
-                        healthBar.Size = Vector2.new(70, 8)
-                        healthBar.Color = Color3.fromRGB(255,0,0)
-                        healthBar.Thickness = 1
-                        healthBar.Filled = true
-                        healthBar.Visible = true
-                        table.insert(Features.ESPObjects, healthBar)
-
-                        -- Box
-                        local box = Drawing.new("Square")
-                        box.Position = Vector2.new(pos.X - 35, pos.Y - 30)
-                        box.Size = Vector2.new(70, 80)
-                        box.Color = Color3.fromRGB(255,255,255)
-                        box.Thickness = 1
-                        box.Filled = false
-                        box.Visible = true
-                        table.insert(Features.ESPObjects, box)
-
-                        -- Tracer
-                        local tracer = Drawing.new("Line")
-                        tracer.From = Vector2.new(pos.X, pos.Y)
-                        tracer.To = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-                        tracer.Color = Color3.fromRGB(255,0,0)
-                        tracer.Thickness = 1
-                        tracer.Visible = true
-                        table.insert(Features.ESPObjects, tracer)
-                    end
-                end
-            end
-        end
-    end
-end
-
--- Loop ESP setiap frame
-RunService.RenderStepped:Connect(function()
-    pcall(UpdateESP)
-end)
-
--- ====================== FITUR LOOPS =======================
-local noclipConnection
-local function ToggleNoClip()
-    Features.NoClip = not Features.NoClip
-    if Features.NoClip then
-        noclipConnection = RunService.Stepped:Connect(function()
-            local char = Player.Character
-            if char then
-                for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-    else
-        if noclipConnection then noclipConnection:Disconnect() end
-    end
-end
-
-local wallbangConnection
-local function ToggleWallbang()
-    Features.Wallbang = not Features.Wallbang
-    if Features.Wallbang then
-        wallbangConnection = RunService.Stepped:Connect(function()
-            local ray = Ray.new(Camera.CFrame.Position, Camera.CFrame.LookVector * 500)
-            local hit, pos = Workspace:FindPartOnRay(ray, Player.Character)
-            if hit and ReplicatedStorage:FindFirstChild("RemoteEvents") then
-                ReplicatedStorage.RemoteEvents.FireServer:FireServer({Position = pos, Force = Vector3.new(9999,9999,9999)})
-            end
-        end)
-    else
-        if wallbangConnection then wallbangConnection:Disconnect() end
-    end
-end
-
-local flyConnection
-local function ToggleFlyVehicle()
-    Features.FlyVehicle = not Features.FlyVehicle
-    if Features.FlyVehicle then
-        flyConnection = RunService.Stepped:Connect(function()
-            local char = Player.Character
-            if char and char:FindFirstChild("VehicleSeat") then
-                local seat = char.VehicleSeat
-                if seat and seat:FindFirstChild("PrimaryPart") then
-                    local part = seat.PrimaryPart
-                    part.Velocity = Vector3.zero
-                    part.RotVelocity = Vector3.zero
-                    part.CFrame = part.CFrame + Camera.CFrame.LookVector * 5
-                end
-            end
-        end)
-    else
-        if flyConnection then flyConnection:Disconnect() end
-    end
-end
-
-local aimbotConnection
-local function ToggleAimbot()
-    Features.Aimbot = not Features.Aimbot
-    if Features.Aimbot then
-        aimbotConnection = RunService.RenderStepped:Connect(function()
-            local target = FindClosestPlayer()
-            if target and target.Character and target.Character:FindFirstChild("Head") then
-                local headPos = target.Character.Head.Position
-                local screenPos, onScreen = Camera:WorldToViewportPoint(headPos)
-                if onScreen then
-                    UserInputService:SetMouseDeltaEnabled(false)
-                    UserInputService:SetMousePosition(screenPos.X, screenPos.Y)
-                end
-            end
-        end)
-    else
-        if aimbotConnection then aimbotConnection:Disconnect() end
-    end
-end
-
--- Slider Speed
-local function SetSpeed(value)
-    Features.SpeedValue = value
-    local char = Player.Character
-    if char and char:FindFirstChild("Humanoid") then
-        char.Humanoid.WalkSpeed = value
-        char.Humanoid.JumpPower = value
-    end
-end
-
--- Ganti nama (asumsi struktur game, sesuaikan)
-local function ChangeName(value)
-    local nameLabel = Workspace:FindFirstChild("Characters") and Workspace.Characters:FindFirstChild(Player.Name) and Workspace.Characters[Player.Name]:FindFirstChild("Head") and Workspace.Characters[Player.Name].Head:FindFirstChild("NameTag") and Workspace.Characters[Player.Name].Head.NameTag:FindFirstChild("MainFrame") and Workspace.Characters[Player.Name].Head.NameTag.MainFrame:FindFirstChild("NameLabel")
-    if nameLabel then nameLabel.Text = value end
-end
-
-local function ChangeUsername(value)
-    local usernameLabel = Workspace:FindFirstChild("Characters") and Workspace.Characters:FindFirstChild(Player.Name) and Workspace.Characters[Player.Name]:FindFirstChild("Head") and Workspace.Characters[Player.Name].Head:FindFirstChild("RankTag") and Workspace.Characters[Player.Name].Head.RankTag:FindFirstChild("MainFrame") and Workspace.Characters[Player.Name].Head.RankTag.MainFrame:FindFirstChild("NameLabel")
-    if usernameLabel then usernameLabel.Text = value end
-end
-
-local TierColors = {
-    Default = Color3.fromRGB(255,255,255),
-    [1] = Color3.fromRGB(150,255,150),
-    [2] = Color3.fromRGB(255,218,185),
-    [3] = Color3.fromRGB(100,149,237)
-}
-
-local function SetTierColor(tier)
-    Features.TierColor = tier
-    local usernameLabel = Workspace:FindFirstChild("Characters") and Workspace.Characters:FindFirstChild(Player.Name) and Workspace.Characters[Player.Name]:FindFirstChild("Head") and Workspace.Characters[Player.Name].Head:FindFirstChild("RankTag") and Workspace.Characters[Player.Name].Head.RankTag:FindFirstChild("MainFrame") and Workspace.Characters[Player.Name].Head.RankTag.MainFrame:FindFirstChild("NameLabel")
-    if usernameLabel then
-        if tier == "Default" then
-            usernameLabel.TextColor3 = Color3.fromRGB(255,255,255)
+    for player, drawings in pairs(espCache) do
+        local box, nameL, hpBg, hpFl, dL = unpack(drawings)
+        local char = player.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local head = char and char:FindFirstChild("Head")
+        
+        if not (char and hum and root and head and hum.Health > 0) then
+            for _, o in pairs(drawings) do o.Visible = false end
         else
-            local tierNum = tonumber(string.match(tier, "%d"))
-            if tierNum then usernameLabel.TextColor3 = TierColors[tierNum] end
+            local dist3D = myPos and (root.Position - myPos).Magnitude or 0
+            if dist3D > espMaxDist then
+                for _, o in pairs(drawings) do o.Visible = false end
+            else
+                local rootPos, rootOn = Camera:WorldToViewportPoint(root.Position)
+                local headPos, headOn = Camera:WorldToViewportPoint(head.Position)
+                local height = math.abs(headPos.Y - rootPos.Y) * 1.7 + (boxPadding * 2)
+                local width = height * 0.55
+                local boxX = rootPos.X - width / 2
+                local boxY = headPos.Y - boxPadding
+                local isVisible = (boxX + width > 0 and boxX < viewportX and boxY + height > 0 and boxY < viewportY)
+                
+                if not (rootOn and headOn and isVisible) then
+                    for _, o in pairs(drawings) do o.Visible = false end
+                else
+                    box.Color = espBoxColor
+                    box.Size = Vector2.new(width, height)
+                    box.Position = Vector2.new(boxX, boxY)
+                    box.Visible = true
+                    
+                    nameL.Text = player.Name
+                    nameL.Color = espNameColor
+                    nameL.Position = Vector2.new(rootPos.X, boxY - 14)
+                    nameL.Visible = true
+                    
+                    local hpPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                    hpBg.Size = Vector2.new(4, height - 4)
+                    hpBg.Position = Vector2.new(boxX - 8, boxY + 2)
+                    hpBg.Visible = true
+                    
+                    hpFl.Color = Color3.fromRGB(255 * (1 - hpPercent), 255 * hpPercent, 80)
+                    hpFl.Size = Vector2.new(2, (height - 6) * hpPercent)
+                    hpFl.Position = Vector2.new(boxX - 7, boxY + 3 + (height - 6) * (1 - hpPercent))
+                    hpFl.Visible = true
+                    
+                    dL.Text = math.floor(dist3D) .. "m"
+                    dL.Position = Vector2.new(rootPos.X, boxY + height + 2)
+                    dL.Visible = true
+                end
+            end
         end
     end
-end
-
--- ====================== GUI LIGHT THEME (SIDEBAR) =======================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SilentHubGUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = Player:WaitForChild("PlayerGui")
-
--- Container utama (600x400)
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 600, 0, 400)
-MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-MainFrame.BackgroundColor3 = Color3.fromRGB(245,245,245)
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0,12)
-MainCorner.Parent = MainFrame
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(200,200,200)
-MainStroke.Thickness = 1
-MainStroke.Parent = MainFrame
-
--- Sidebar (kiri, lebar 150)
-local Sidebar = Instance.new("Frame")
-Sidebar.Size = UDim2.new(0, 150, 1, 0)
-Sidebar.BackgroundColor3 = Color3.fromRGB(255,255,255)
-Sidebar.BorderSizePixel = 0
-Sidebar.Parent = MainFrame
-local SidebarCorner = Instance.new("UICorner")
-SidebarCorner.CornerRadius = UDim.new(0,12)
-SidebarCorner.Parent = Sidebar
--- Tutup sudut kanan sidebar biar rata
-local SidebarMask = Instance.new("Frame")
-SidebarMask.Size = UDim2.new(0, 12, 1, 0)
-SidebarMask.Position = UDim2.new(1, -12, 0, 0)
-SidebarMask.BackgroundColor3 = Color3.fromRGB(255,255,255)
-SidebarMask.BorderSizePixel = 0
-SidebarMask.Parent = Sidebar
-
--- Logo / Title di sidebar
-local Logo = Instance.new("TextLabel")
-Logo.Size = UDim2.new(1, 0, 0, 50)
-Logo.Position = UDim2.new(0, 0, 0, 15)
-Logo.BackgroundTransparency = 1
-Logo.Text = "Silent Hub"
-Logo.TextColor3 = Color3.fromRGB(66,133,244)
-Logo.TextSize = 22
-Logo.Font = Enum.Font.GothamBold
-Logo.TextXAlignment = Enum.TextXAlignment.Center
-Logo.Parent = Sidebar
-
--- List menu (tombol navigasi)
-local MenuButtons = {}
-local function CreateMenuButton(name, yPos, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 40)
-    btn.Position = UDim2.new(0.05, 0, 0, yPos)
-    btn.BackgroundColor3 = Color3.fromRGB(240,240,240)
-    btn.BorderSizePixel = 0
-    btn.Text = name
-    btn.TextColor3 = Color3.fromRGB(30,30,30)
-    btn.TextSize = 14
-    btn.Font = Enum.Font.GothamMedium
-    btn.Parent = Sidebar
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0,8)
-    btnCorner.Parent = btn
-    btn.MouseButton1Click:Connect(callback)
-    MenuButtons[name] = btn
-    return btn
-end
-
--- Area konten kanan (450x400)
-local ContentFrame = Instance.new("Frame")
-ContentFrame.Size = UDim2.new(1, -160, 1, -20)
-ContentFrame.Position = UDim2.new(0, 160, 0, 10)
-ContentFrame.BackgroundTransparency = 1
-ContentFrame.Parent = MainFrame
-
--- Halaman konten (stack)
-local Pages = {}
-local function CreatePage(name)
-    local page = Instance.new("Frame")
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.BackgroundTransparency = 1
-    page.Visible = false
-    page.Parent = ContentFrame
-    Pages[name] = page
-    return page
-end
-
--- Page General
-local GeneralPage = CreatePage("General")
--- Page Combat
-local CombatPage = CreatePage("Combat")
--- Page Visual
-local VisualPage = CreatePage("Visual")
-
--- Fungsi untuk menampilkan page
-local function ShowPage(name)
-    for _, page in pairs(Pages) do
-        page.Visible = false
-    end
-    if Pages[name] then
-        Pages[name].Visible = true
-    end
-    -- Update style tombol
-    for btnName, btn in pairs(MenuButtons) do
-        if btnName == name then
-            btn.BackgroundColor3 = Color3.fromRGB(66,133,244)
-            btn.TextColor3 = Color3.fromRGB(255,255,255)
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(240,240,240)
-            btn.TextColor3 = Color3.fromRGB(30,30,30)
-        end
-    end
-end
-
--- Buat tombol menu
-CreateMenuButton("General", 80, function() ShowPage("General") end)
-CreateMenuButton("Combat", 130, function() ShowPage("Combat") end)
-CreateMenuButton("Visual", 180, function() ShowPage("Visual") end)
-
--- ====================== FUNGSI PEMBUAT KONTROL UI =======================
-local function CreateLabel(parent, text, y)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -20, 0, 25)
-    lbl.Position = UDim2.new(0, 10, 0, y)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = text
-    lbl.TextColor3 = Color3.fromRGB(50,50,50)
-    lbl.TextSize = 14
-    lbl.Font = Enum.Font.GothamMedium
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = parent
-    return lbl
-end
-
-local function CreateTextBox(parent, placeholder, y, callback)
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0.6, 0, 0, 35)
-    box.Position = UDim2.new(0.1, 0, 0, y)
-    box.BackgroundColor3 = Color3.fromRGB(255,255,255)
-    box.BorderSizePixel = 0
-    box.PlaceholderText = placeholder
-    box.TextColor3 = Color3.fromRGB(30,30,30)
-    box.Font = Enum.Font.Gotham
-    box.TextSize = 14
-    box.Parent = parent
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0,6)
-    corner.Parent = box
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(200,200,200)
-    stroke.Thickness = 1
-    stroke.Parent = box
-    box.FocusLost:Connect(function(enter)
-        if enter then callback(box.Text) end
-    end)
-    return box
-end
-
-local function CreateDropdown(parent, items, default, y, callback)
-    local dropdown = Instance.new("Frame")
-    dropdown.Size = UDim2.new(0.4, 0, 0, 35)
-    dropdown.Position = UDim2.new(0.1, 0, 0, y)
-    dropdown.BackgroundColor3 = Color3.fromRGB(255,255,255)
-    dropdown.BorderSizePixel = 0
-    dropdown.Parent = parent
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0,6)
-    corner.Parent = dropdown
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(200,200,200)
-    stroke.Thickness = 1
-    stroke.Parent = dropdown
-    local selected = Instance.new("TextLabel")
-    selected.Size = UDim2.new(1, -10, 1, 0)
-    selected.Position = UDim2.new(0, 5, 0, 0)
-    selected.BackgroundTransparency = 1
-    selected.Text = default
-    selected.TextColor3 = Color3.fromRGB(30,30,30)
-    selected.TextXAlignment = Enum.TextXAlignment.Left
-    selected.Font = Enum.Font.Gotham
-    selected.TextSize = 14
-    selected.Parent = dropdown
-    local arrow = Instance.new("TextLabel")
-    arrow.Size = UDim2.new(0, 20, 1, 0)
-    arrow.Position = UDim2.new(1, -22, 0, 0)
-    arrow.BackgroundTransparency = 1
-    arrow.Text = "▼"
-    arrow.TextColor3 = Color3.fromRGB(100,100,100)
-    arrow.TextSize = 12
-    arrow.Parent = dropdown
-    local listFrame = Instance.new("Frame")
-    listFrame.Size = UDim2.new(1, 0, 0, #items * 30)
-    listFrame.Position = UDim2.new(0, 0, 1, 0)
-    listFrame.BackgroundColor3 = Color3.fromRGB(255,255,255)
-    listFrame.BorderSizePixel = 0
-    listFrame.Visible = false
-    listFrame.Parent = dropdown
-    local listCorner = Instance.new("UICorner")
-    listCorner.CornerRadius = UDim.new(0,6)
-    listCorner.Parent = listFrame
-    local listStroke = Instance.new("UIStroke")
-    listStroke.Color = Color3.fromRGB(200,200,200)
-    listStroke.Thickness = 1
-    listStroke.Parent = listFrame
-    for i, item in ipairs(items) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 0, 30)
-        btn.Position = UDim2.new(0, 0, 0, (i-1)*30)
-        btn.BackgroundColor3 = Color3.fromRGB(255,255,255)
-        btn.BorderSizePixel = 0
-        btn.Text = item
-        btn.TextColor3 = Color3.fromRGB(30,30,30)
-        btn.TextSize = 13
-        btn.Font = Enum.Font.Gotham
-        btn.Parent = listFrame
-        btn.MouseButton1Click:Connect(function()
-            selected.Text = item
-            listFrame.Visible = false
-            callback(item)
-        end)
-    end
-    dropdown.MouseButton1Click:Connect(function()
-        listFrame.Visible = not listFrame.Visible
-    end)
-    return dropdown
-end
-
-local function CreateToggle(parent, text, y, getter, setter)
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0.9, 0, 0, 40)
-    frame.Position = UDim2.new(0, 10, 0, y)
-    frame.BackgroundTransparency = 1
-    frame.Parent = parent
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.7, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(50,50,50)
-    label.TextSize = 14
-    label.Font = Enum.Font.Gotham
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = frame
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(0, 50, 0, 25)
-    toggleBtn.Position = UDim2.new(0.8, 0, 0.5, -12)
-    toggleBtn.BackgroundColor3 = getter() and Color3.fromRGB(52,168,83) or Color3.fromRGB(200,200,200)
-    toggleBtn.BorderSizePixel = 0
-    toggleBtn.Text = getter() and "ON" or "OFF"
-    toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    toggleBtn.TextSize = 12
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.Parent = frame
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(1,0)
-    corner.Parent = toggleBtn
-    toggleBtn.MouseButton1Click:Connect(function()
-        setter()
-        toggleBtn.BackgroundColor3 = getter() and Color3.fromRGB(52,168,83) or Color3.fromRGB(200,200,200)
-        toggleBtn.Text = getter() and "ON" or "OFF"
-    end)
-    return toggleBtn
-end
-
-local function CreateSlider(parent, text, min, max, default, y, callback)
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0.9, 0, 0, 60)
-    frame.Position = UDim2.new(0, 10, 0, y)
-    frame.BackgroundTransparency = 1
-    frame.Parent = parent
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 20)
-    label.BackgroundTransparency = 1
-    label.Text = text .. " (" .. default .. ")"
-    label.TextColor3 = Color3.fromRGB(50,50,50)
-    label.TextSize = 14
-    label.Font = Enum.Font.Gotham
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = frame
-    local slider = Instance.new("Frame")
-    slider.Size = UDim2.new(0.8, 0, 0, 6)
-    slider.Position = UDim2.new(0, 0, 0.5, -3)
-    slider.BackgroundColor3 = Color3.fromRGB(220,220,220)
-    slider.BorderSizePixel = 0
-    slider.Parent = frame
-    local sliderCorner = Instance.new("UICorner")
-    sliderCorner.CornerRadius = UDim.new(1,0)
-    sliderCorner.Parent = slider
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.new((default-min)/(max-min), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(66,133,244)
-    fill.BorderSizePixel = 0
-    fill.Parent = slider
-    local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(1,0)
-    fillCorner.Parent = fill
-    local knob = Instance.new("TextButton")
-    knob.Size = UDim2.new(0, 16, 0, 16)
-    knob.Position = UDim2.new((default-min)/(max-min), -8, 0.5, -8)
-    knob.BackgroundColor3 = Color3.fromRGB(66,133,244)
-    knob.BorderSizePixel = 0
-    knob.Text = ""
-    knob.Parent = slider
-    local knobCorner = Instance.new("UICorner")
-    knobCorner.CornerRadius = UDim.new(1,0)
-    knobCorner.Parent = knob
-    local valueLabel = Instance.new("TextLabel")
-    valueLabel.Size = UDim2.new(0.1, 0, 0, 20)
-    valueLabel.Position = UDim2.new(0.85, 0, 0, 0)
-    valueLabel.BackgroundTransparency = 1
-    valueLabel.Text = tostring(default)
-    valueLabel.TextColor3 = Color3.fromRGB(66,133,244)
-    valueLabel.TextSize = 12
-    valueLabel.Font = Enum.Font.GothamBold
-    valueLabel.Parent = frame
-
-    local dragging = false
-    knob.MouseButton1Down:Connect(function()
-        dragging = true
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    frame.MouseMove:Connect(function()
-        if dragging then
-            local mousePos = UserInputService:GetMouseLocation()
-            local framePos = slider.AbsolutePosition
-            local width = slider.AbsoluteSize.X
-            local percent = math.clamp((mousePos.X - framePos.X) / width, 0, 1)
-            local newValue = math.floor(min + percent * (max - min))
-            fill.Size = UDim2.new(percent, 0, 1, 0)
-            knob.Position = UDim2.new(percent, -8, 0.5, -8)
-            valueLabel.Text = tostring(newValue)
-            label.Text = text .. " (" .. newValue .. ")"
-            callback(newValue)
-        end
-    end)
-    return slider
-end
-
--- ====================== ISI HALAMAN =======================
--- General Page
-CreateLabel(GeneralPage, "Change Name", 10)
-CreateTextBox(GeneralPage, "New Name", 40, function(val) ChangeName(val) end)
-
-CreateLabel(GeneralPage, "Change Username", 90)
-CreateTextBox(GeneralPage, "New Username", 120, function(val) ChangeUsername(val) end)
-
-CreateLabel(GeneralPage, "WalkSpeed / JumpPower", 170)
-CreateSlider(GeneralPage, "Speed", 16, 50, 16, 200, function(val)
-    SetSpeed(val)
 end)
 
--- Combat Page
-CreateToggle(CombatPage, "NoClip", 10, function() return Features.NoClip end, ToggleNoClip)
-CreateToggle(CombatPage, "Wallbang", 60, function() return Features.Wallbang end, ToggleWallbang)
-CreateToggle(CombatPage, "Fly Vehicle", 110, function() return Features.FlyVehicle end, ToggleFlyVehicle)
-CreateToggle(CombatPage, "Aimbot", 160, function() return Features.Aimbot end, ToggleAimbot)
+-- ==================== SETTINGS ====================
+local SettingsGroup = SettingsTab:AddLeftGroupbox("Settings")
 
--- Visual Page
-CreateToggle(VisualPage, "ESP", 10, function() return Features.ESP end, function()
-    Features.ESP = not Features.ESP
-end)
+local guiVisible = true
+SettingsGroup:AddButton({
+    Text = "Toggle GUI (Hide/Show)",
+    Func = function()
+        guiVisible = not guiVisible
+        if guiVisible then Window:Show() else Window:Hide() end
+    end
+})
 
-CreateLabel(VisualPage, "Tier Color", 70)
-CreateDropdown(VisualPage, {"Default", "Tier 1", "Tier 2", "Tier 3"}, "Default", 100, function(val)
-    SetTierColor(val)
-end)
+SettingsGroup:AddButton({
+    Text = "Unload Script",
+    Func = function()
+        L:Unload()
+        FovCircle:Remove()
+        for _, drawings in pairs(espCache) do for _, o in pairs(drawings) do pcall(function() o:Remove() end) end end
+        if heartbeatConnection then heartbeatConnection:Disconnect() end
+        if vFlyConn then vFlyConn:Disconnect() end
+    end
+})
 
--- Tampilkan halaman pertama
-ShowPage("General")
+-- ==================== NOTIFIKASI ====================
+L:Notify("XYLUS X SILENT | All in One Loaded!", 4)
+print("✅ XYLUS X SILENT - Bypass aktif + Semua fitur siap")
